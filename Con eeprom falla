@@ -1,0 +1,268 @@
+//*******************************************************************************************************************************************
+// Universidad del Valle de Guatemala
+// IE2023 Programación de Microcontroladores
+// main.c
+// Proyecto: PROYECTO2
+// Hardware: ATMEGA328P
+// Created: 5/5/2024
+// Author : Fatima Urrutia
+//********************************************************************************************************************************************
+
+//********************************************************************************************************************************************
+// Librerias
+//********************************************************************************************************************************************
+
+# define F_CPU 16000000
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <stdint.h>
+#include <util/delay.h>
+#include <avr/eeprom.h>
+
+#include "ADC/ADC.h"
+#include "PWM1/PWM1.h"
+#include "PWM2/PWM2.h"
+#include "PWM0/PWM0.h"
+
+//********************************************************************************************************************************************
+// Variables Globales
+//********************************************************************************************************************************************
+
+uint8_t POT = 0;
+uint8_t POT1 = 0;
+uint8_t POT2 = 0;
+uint8_t POT3 = 0;
+uint8_t POT4 = 0;
+
+uint8_t* A = 0;
+uint8_t* B = 0;
+uint8_t* C = 0;
+uint8_t* D = 0;
+
+uint8_t modo = 0;
+
+int setup(void); 
+int setpinchange(void);
+
+//********************************************************************************************************************************************
+// Main
+//********************************************************************************************************************************************
+
+int main(void)
+{	
+	setup();
+	
+    while (1) 
+    {
+		switch (modo){
+			case 0:
+				ADCSRA |= (1 << ADSC); // Activar la conversion del ADC
+				
+				updateDutyA0((POT2/6) + 5); // Actualizar el valor de parpados derechos
+				updateDutyB0((POT1/6) + 5);
+				
+				updateDutyA1((POT2/6) + 5); // Actualizar el valor de parpados izquierdos
+				updateDutyB1((POT1/6) + 5);
+				
+				updateDutyA2((POT3/6) + 5); // Actualizar el valor de los lados
+				
+				updateDutyB2((POT4/6) + 5); // Actualizar el valor de arriba abajo
+				_delay_ms(4);
+				break;
+			
+			case 1:
+				ADCSRA |= (1 << ADSC);
+				updateDutyA0((POT2/6) + 5); // Actualizar el valor de parpados derechos
+				updateDutyB0((POT1/6) + 5);
+			
+				updateDutyA1((POT2/6) + 5); // Actualizar el valor de parpados izquierdos
+				updateDutyB1((POT1/6) + 5);
+			
+				updateDutyA2((POT3/6) + 5); // Actualizar el valor de los lados
+			
+				updateDutyB2((POT4/6) + 5); // Actualizar el valor de arriba abajo
+				_delay_ms(4);
+				break;
+			
+			case 2:
+				updateDutyA0((B/6) + 5); // Actualizar el valor de parpados derechos
+				updateDutyB0((A/6) + 5);
+				
+				updateDutyA1((B/6) + 5); // Actualizar el valor de parpados izquierdos
+				updateDutyB1((A/6) + 5);
+				
+				updateDutyA2((C/6) + 5); // Actualizar el valor de los lados
+				
+				updateDutyB2((D/6) + 5); // Actualizar el valor de arriba abajo
+				_delay_ms(4);
+				break;
+				
+			case 3:
+				break;
+				
+			default:
+				break;	
+		}
+    }
+}
+
+//********************************************************************************************************************************************
+// Funciones
+//********************************************************************************************************************************************
+
+int setup(void)
+{
+	CLKPR |= (1 << CLKPCE);
+	CLKPR |= (1 << CLKPS0); //8MHz
+	
+	DIDR0 |= (1 << ADC5D) | (1 << ADC4D); //Apagar la entrada digital de PC5 y PC4
+	
+	DDRC &= (1 << DDC0) | (1 << DDC1) | (1 << DDC2) |(1 << DDC3); // Setear los botones de posicion
+	PORTC |= (1 << PORTD0) | (1 << PORTD1) | (1 << PORTD2) | (1 << PORTD3);
+	
+	DDRB &= (1 << DDB5); // Setear el boton de modo
+	PORTB |= (1 << PORTB5);
+	
+	TCCR0A = 0; // Limpiar registros del PWM
+	TCCR0B = 0;
+	
+	setpinchange();
+	
+	setPWM0fastA(0, _FF0, 1024); // setear el PWM0 Fast
+	
+	setPWM0fastB(0, _FF0, 1024);
+	
+	setPWM1fastA(0, _8bits, 1024); // setear el PWM1 Fast
+	
+	setPWM1fastB(0, _8bits, 1024);
+	
+	setPWM2fastA(0, _FF2, 1024); // setear el PWM2 Fast
+	
+	setPWM2fastB(0, _FF2, 1024);
+	
+	setADC(externo, izquierda, 7); // Setear el ADC
+	
+	controlADC(1, 0, 1, 128); // Setear los registros de control del ADC
+	
+	sei(); // Activar interrupciones globales
+}
+
+setpinchange(void){
+	PCICR |= (1 << PCIE1) | (1 << PCIE0); // Setear los registros de control para pcint 0 y 1
+	
+	PCMSK0 |= (1 << PCINT5); // Setear la mascara para PB5
+	PCMSK1 |= (1 << PCINT8) | (1 << PCINT9) | (1 << PCINT10) | (1 << PCINT11); // Setear la mascara de los botones en PINC
+}
+
+//********************************************************************************************************************************************
+// Interrupciones
+//********************************************************************************************************************************************
+
+ISR(PCINT0_vect){
+	uint8_t bttn_modo = PINB & (1 << PINB5);
+	
+	if (bttn_modo == 0 & modo < 4){
+		modo++;
+	}
+	else {
+		modo = 0;
+	}
+	
+	PCIFR |= (1 << PCIF0);
+}
+
+ISR(PCINT1_vect){
+	uint8_t bttn_1 = PINC & (1 << PINC0);
+	uint8_t bttn_2 = PINC & (1 << PINC1);
+	uint8_t bttn_3 = PINC & (1 << PINC2);
+	uint8_t bttn_4 = PINC & (1 << PINC3);
+	
+	switch (modo){
+		case 0:
+			break;
+		
+		case 1:
+			if (bttn_1 == 0){
+				eeprom_write_byte(0, POT1);
+				eeprom_write_byte(1, POT2);
+				eeprom_write_byte(2, POT3);
+				eeprom_write_byte(3, POT4);			}
+			else if (bttn_2 == 0){
+				eeprom_write_byte(4, POT1);
+				eeprom_write_byte(5, POT2);
+				eeprom_write_byte(6, POT3);
+				eeprom_write_byte(7, POT4);
+			}
+			else if (bttn_3 == 0){
+				eeprom_write_byte(8, POT1);
+				eeprom_write_byte(9, POT2);
+				eeprom_write_byte(10, POT3);
+				eeprom_write_byte(11, POT4);
+			}
+			else if (bttn_4 == 0){
+				eeprom_write_byte(12, POT1);
+				eeprom_write_byte(13, POT2);
+				eeprom_write_byte(14, POT3);
+				eeprom_write_byte(15, POT4);
+			}
+			break;
+			
+		case 2:
+			if (bttn_1 == 0){
+				A = eeprom_read_byte(0);
+				B = eeprom_read_byte(1);
+				C = eeprom_read_byte(2);
+				D = eeprom_read_byte(3);
+			}
+			else if (bttn_2 == 0){
+				A = eeprom_read_byte(4);
+				B = eeprom_read_byte(5);
+				C = eeprom_read_byte(6);
+				D = eeprom_read_byte(7);
+			}
+			else if (bttn_3 == 0){
+				A = eeprom_read_byte(8);
+				B = eeprom_read_byte(9);
+				C = eeprom_read_byte(10);
+				D = eeprom_read_byte(11);
+			}
+			else if (bttn_4 == 0){
+				A = eeprom_read_byte(12);
+				B = eeprom_read_byte(13);
+				C = eeprom_read_byte(14);
+				D = eeprom_read_byte(15);
+			}
+			
+			break;
+			
+		case 3:
+			break;
+			
+		default:
+			break;
+	}
+	
+	PCIFR |= (1 << PCIF1);
+}
+
+ISR(ADC_vect){
+	POT = (ADMUX & 0x0F); //Leer que potenciometro activo la interrupcion
+	
+	if (POT == 7){
+		POT1 = ADCH; //Leer el potenciometro activado
+		setADC(externo, izquierda, 6); //Setear el siguiente potenciometro 
+	}
+	else if (POT == 6){
+		POT2 = ADCH;
+		setADC(externo, izquierda, 5);
+	}
+	else if (POT == 5) {
+		POT3 = ADCH;
+		setADC(externo, izquierda, 4);
+	}
+	else {
+		POT4 = ADCH;
+		setADC(externo, izquierda, 7);
+	}
+	ADCSRA |= (1 << ADIF); //Apagar la bandera de ADC
+}
